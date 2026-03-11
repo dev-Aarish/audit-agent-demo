@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Smart Contract Auditor</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        #result { background: #f4f4f4; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
+        .status { color: blue; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>AI Smart Contract Security Audit</h2>
+    <p>Cost: 0.001 Sepolia ETH</p>
+
+    <input type="file" id="contractFile" accept=".sol" />
+    <br><br>
+    <button id="auditBtn">Pay & Run Audit</button>
+
+    <p id="status" class="status"></p>
+    <pre id="result"></pre>
+
+    <script type="module">
+        import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.10.0/+esm";
+
+        const MERCHANT = "0x1105F7Fe688E78D5F9A1Bc1887323B8444dF6a0f";
+        const PRICE = "0.001";
+        const SEPOLIA_CHAIN_ID = "0xaa36a7"; // Chain ID 11155111 in Hex
+
+        async function runAudit() {
+            const fileInput = document.getElementById("contractFile");
+            const statusBox = document.getElementById("status");
+            const resultBox = document.getElementById("result");
+            const btn = document.getElementById("auditBtn");
+
+            if (!fileInput.files.length) return alert("Please select a .sol file");
+            
+            try {
+                if (!window.ethereum) throw new Error("MetaMask not found!");
+                
+                btn.disabled = true;
+                statusBox.textContent = "Connecting to Sepolia...";
+
+                // 1. Force Switch to Sepolia
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: SEPOLIA_CHAIN_ID }],
+                });
+
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await provider.getSigner();
+                
+                // 2. Pre-check Balance
+                const balance = await provider.getBalance(signer.address);
+                if (balance < ethers.parseEther(PRICE)) {
+                    throw new Error(`Insufficient Funds! You need 0.001 ETH + gas. Your balance: ${ethers.formatEther(balance)} ETH`);
+                }
+
+                statusBox.textContent = "Confirm payment in MetaMask...";
+                const tx = await signer.sendTransaction({
+                    to: MERCHANT,
+                    value: ethers.parseEther(PRICE)
+                });
+
+                statusBox.textContent = "Waiting for block confirmation...";
+                await tx.wait(1); // Wait for 1 confirmation
+
+                statusBox.textContent = "Payment confirmed! Uploading for AI Audit...";
+
+                const formData = new FormData();
+                formData.append("contract", fileInput.files[0]);
+                formData.append("txHash", tx.hash);
+
+                const response = await fetch("http://localhost:8000/audit", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await response.json();
+                resultBox.textContent = JSON.stringify(data, null, 2);
+                statusBox.textContent = "Audit Complete.";
+
+            } catch (err) {
+                console.error(err);
+                resultBox.textContent = "Error: " + (err.reason || err.message);
+                statusBox.textContent = "";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        document.getElementById("auditBtn").addEventListener("click", runAudit);
+    </script>
+</body>
+</html>

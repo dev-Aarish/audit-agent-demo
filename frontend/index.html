@@ -1,162 +1,139 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AI Smart Contract Auditor</title>
-    <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
-        #result { background: #f4f4f4; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
-        .status { color: blue; font-weight: bold; }
-    </style>
+  <title>AI Smart Contract Auditor</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+    #result { background: #f4f4f4; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
+    .status { color: blue; font-weight: bold; }
+    .links { margin-top: 15px; }
+    .links a {
+      display: inline-block;
+      margin-right: 15px;
+      padding: 8px 16px;
+      background: #0052ff;
+      color: white;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .links a:hover { background: #0039b3; }
+  </style>
 </head>
 <body>
 
-    <h2>AI Smart Contract Security Audit</h2>
-    <p>Cost: 1 USDC (gasless via Facinet)</p>
+  <h2>AI Smart Contract Security Audit</h2>
+  <p>Cost: 1 USDC (gasless via Facinet)</p>
 
-    <input type="file" id="contractFile" accept=".sol" />
-    <br><br>
-    <button id="auditBtn">Pay & Run Audit</button>
+  <input type="file" id="contractFile" accept=".sol" />
+  <br><br>
+  <button id="auditBtn">Pay & Run Audit</button>
 
-    <p id="status" class="status"></p>
-    <pre id="result"></pre>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <h3 id="downloadHeader" style="display:none; margin-top: 10px;">Your ai analyis is here!....</h3>
-    <button id="downloadBtn" style="display:none; background: #10b981; margin-top: 10px;">Download PDF Report</button>
-    <script>
-  const AUDIT_URL = "http://localhost:8000/audit";
-  const PAY_URL = "http://localhost:8000/pay";
-  
-  // 1. Move these to the top (Global Scope)
-  const downloadBtn = document.getElementById("downloadBtn");
-  const downloadHeader=document.getElementById("downloadHeader");
-  let lastReport = null; 
+  <p id="status" class="status"></p>
+  <div id="links" class="links"></div>
+  <pre id="result"></pre>
 
-  async function runAudit() {
-    const fileInput = document.getElementById("contractFile");
-    const statusBox = document.getElementById("status");
-    const resultBox = document.getElementById("result");
-    const btn = document.getElementById("auditBtn");
+  <script>
+    const AUDIT_URL = "http://localhost:3000/audit";
+    const PAY_URL = "http://localhost:3000/pay";
 
-    if (!fileInput.files.length) return alert("Please select a .sol file");
+    async function runAudit() {
+      const fileInput = document.getElementById("contractFile");
+      const statusBox = document.getElementById("status");
+      const resultBox = document.getElementById("result");
+      const linksBox = document.getElementById("links");
+      const btn = document.getElementById("auditBtn");
 
-    try {
-      btn.disabled = true;
-      downloadBtn.style.display = "none"; // Hide button if running a new audit
-      downloadHeader.style.display="none";
-      statusBox.textContent = "Checking payment requirements...";
+      if (!fileInput.files.length) return alert("Please select a .sol file");
 
-      const checkForm = new FormData();
-      checkForm.append("contract", fileInput.files[0]);
+      linksBox.innerHTML = "";
+      resultBox.textContent = "";
 
-      let response = await fetch(AUDIT_URL, { method: "POST", body: checkForm });
+      try {
+        btn.disabled = true;
+        statusBox.textContent = "Checking payment requirements...";
 
-      // Handle Payment Required
-      if (response.status === 402) {
-        statusBox.textContent = "Processing gasless USDC payment...";
-        const payRes = await fetch(PAY_URL, { method: "POST" });
-        if (!payRes.ok) throw new Error("Payment failed.");
+        const checkForm = new FormData();
+        checkForm.append("contract", fileInput.files[0]);
 
-        const paymentResult = await payRes.json();
-        const paymentProof = btoa(JSON.stringify(paymentResult));
-
-        statusBox.textContent = "Payment confirmed! Running AI Audit...";
-        const auditForm = new FormData();
-        auditForm.append("contract", fileInput.files[0]);
-
-        response = await fetch(AUDIT_URL, {
+        const checkRes = await fetch(AUDIT_URL, {
           method: "POST",
-          headers: { "x-payment": paymentProof },
-          body: auditForm
+          body: checkForm
         });
-      }
 
-      const data = await response.json();
-      
-      if (data.success) {
-        // 2. STORE the report data for the PDF
-        lastReport = data.report; 
-        
-        // 3. SHOW the download button
-        downloadBtn.style.display = "block"; 
-        downloadHeader.style.display = "block";
-        
-        resultBox.textContent = data.report.aiAnalysis;
-        statusBox.textContent = "Audit Complete.";
-      } else {
-        throw new Error(data.error || "Audit failed");
-      }
+        if (checkRes.status === 402) {
 
-    } catch (err) {
-      console.error(err);
-      resultBox.textContent = "Error: " + err.message;
-      statusBox.textContent = "";
-    } finally {
-      btn.disabled = false;
-    }
-  }
+          // Step 1: Pay
+          statusBox.textContent = "Processing gasless USDC payment...";
+          const payRes = await fetch(PAY_URL, { method: "POST" });
 
-  // 4. Move PDF logic out of runAudit
-  function generatePDF(report) {
-    if (!report) return;
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    
-    // PDF Config
-    const margin = 20;
-    const pageHeight = doc.internal.pageSize.height;
-    let cursorY = 20; // Tracks vertical position
+          if (!payRes.ok) {
+            const payErr = await payRes.json();
+            throw new Error("Payment failed: " + payErr.error);
+          }
 
-    // 1. Header
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.text("Smart Contract Security Audit", margin, cursorY);
-    cursorY += 15;
+          const paymentResult = await payRes.json();
+          if (!paymentResult.success) throw new Error("Payment unsuccessful");
 
-    // 2. Metadata
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.text(`File: ${report.contract}`, margin, cursorY);
-    cursorY += 8;
-    doc.text(`Security Score: ${report.securityScore}/100`, margin, cursorY);
-    cursorY += 8;
-    doc.text(`On-Chain TX: ${report.onChainTx || 'N/A'}`, margin, cursorY);
-    cursorY += 15;
+          // Step 2: Audit
+          statusBox.textContent = "Payment confirmed! Running AI audit...";
+          const paymentProof = btoa(JSON.stringify(paymentResult));
+          const auditForm = new FormData();
+          auditForm.append("contract", fileInput.files[0]);
 
-    // 3. AI Analysis Section
-    doc.setFont("helvetica", "bold");
-    doc.text("AI Analysis Report:", margin, cursorY);
-    cursorY += 10;
+          const auditRes = await fetch(AUDIT_URL, {
+            method: "POST",
+            headers: { "x-payment": paymentProof },
+            body: auditForm
+          });
 
-    // 4. Smart Multi-page Text Handling
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    
-    // Split the AI analysis into lines that fit the page width
-    const splitText = doc.splitTextToSize(report.aiAnalysis, 170);
-    const lineHeight = 7;
+          if (!auditRes.ok) {
+            const errData = await auditRes.json();
+            throw new Error("Audit failed: " + errData.error);
+          }
 
-    splitText.forEach((line) => {
-        // Check if the current line will exceed the page height
-        if (cursorY + lineHeight > pageHeight - margin) {
-            doc.addPage(); // Add a new page
-            cursorY = 20;  // Reset cursor to top of new page
+          // Step 3: Show results
+          statusBox.textContent = "Uploading to IPFS and storing on chain...";
+          const data = await auditRes.json();
+
+          statusBox.textContent = "✅ Audit Complete. Stored on IPFS and Base Sepolia.";
+
+          // Show IPFS and explorer links
+          if (data.ipfs?.url) {
+            const ipfsLink = document.createElement("a");
+            ipfsLink.href = data.ipfs.url;
+            ipfsLink.target = "_blank";
+            ipfsLink.textContent = "View on IPFS";
+            linksBox.appendChild(ipfsLink);
+          }
+
+          if (data.blockchain?.explorerUrl) {
+            const chainLink = document.createElement("a");
+            chainLink.href = data.blockchain.explorerUrl;
+            chainLink.target = "_blank";
+            chainLink.textContent = "View on Basescan";
+            linksBox.appendChild(chainLink);
+          }
+
+          resultBox.textContent = JSON.stringify(data, null, 2);
+
+        } else {
+          const data = await checkRes.json();
+          resultBox.textContent = JSON.stringify(data, null, 2);
+          statusBox.textContent = "Audit Complete.";
         }
-        doc.text(line, margin, cursorY);
-        cursorY += lineHeight; // Move cursor down for the next line
-    });
 
-    // 5. Footer (Optional)
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, margin, pageHeight - 10);
+      } catch (err) {
+        console.error(err);
+        resultBox.textContent = "Error: " + err.message;
+        statusBox.textContent = "";
+      } finally {
+        btn.disabled = false;
+      }
+    }
 
-    doc.save(`${report.contract.replace('.sol', '')}_Audit_Report.pdf`);
-}
+    document.getElementById("auditBtn").addEventListener("click", runAudit);
+  </script>
 
-  // Event Listeners
-  document.getElementById("auditBtn").addEventListener("click", runAudit);
-  downloadBtn.addEventListener("click", () => generatePDF(lastReport));
-</script>
 </body>
 </html>

@@ -19,10 +19,18 @@
 
     <p id="status" class="status"></p>
     <pre id="result"></pre>
-
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <h3 id="downloadHeader" style="display:none; margin-top: 10px;">Your ai analyis is here!....</h3>
+    <button id="downloadBtn" style="display:none; background: #10b981; margin-top: 10px;">Download PDF Report</button>
     <script>
-  const AUDIT_URL = "http://localhost:3000/audit";
-  const PAY_URL = "http://localhost:3000/pay";
+  const AUDIT_URL = "http://localhost:8000/audit";
+  const PAY_URL = "http://localhost:8000/pay";
+  
+  // 1. Move these to the top (Global Scope)
+  const downloadBtn = document.getElementById("downloadBtn");
+  const downloadHeader=document.getElementById("downloadHeader");
+  let lastReport = null; 
 
   async function runAudit() {
     const fileInput = document.getElementById("contractFile");
@@ -34,60 +42,49 @@
 
     try {
       btn.disabled = true;
-
-      // Step 1: Check if payment is required
+      downloadBtn.style.display = "none"; // Hide button if running a new audit
+      downloadHeader.style.display="none";
       statusBox.textContent = "Checking payment requirements...";
 
       const checkForm = new FormData();
       checkForm.append("contract", fileInput.files[0]);
 
-      const checkRes = await fetch(AUDIT_URL, {
-        method: "POST",
-        body: checkForm
-      });
+      let response = await fetch(AUDIT_URL, { method: "POST", body: checkForm });
 
-      if (checkRes.status === 402) {
-
-        // Step 2: Trigger server-side payment via facinet
+      // Handle Payment Required
+      if (response.status === 402) {
         statusBox.textContent = "Processing gasless USDC payment...";
-
-        const payRes = await fetch(PAY_URL, {
-          method: "POST"
-        });
-
-        if (!payRes.ok) {
-          const payErr = await payRes.json();
-          throw new Error("Payment failed: " + payErr.error);
-        }
+        const payRes = await fetch(PAY_URL, { method: "POST" });
+        if (!payRes.ok) throw new Error("Payment failed.");
 
         const paymentResult = await payRes.json();
-
-        if (!paymentResult.success) {
-          throw new Error("Payment unsuccessful");
-        }
-
-        statusBox.textContent = "Payment confirmed! Running AI Audit...";
-
-        // Step 3: Retry audit with payment proof
         const paymentProof = btoa(JSON.stringify(paymentResult));
 
+        statusBox.textContent = "Payment confirmed! Running AI Audit...";
         const auditForm = new FormData();
         auditForm.append("contract", fileInput.files[0]);
 
-        const auditRes = await fetch(AUDIT_URL, {
+        response = await fetch(AUDIT_URL, {
           method: "POST",
           headers: { "x-payment": paymentProof },
           body: auditForm
         });
+      }
 
-        const data = await auditRes.json();
-        resultBox.textContent = JSON.stringify(data, null, 2);
+      const data = await response.json();
+      
+      if (data.success) {
+        // 2. STORE the report data for the PDF
+        lastReport = data.report; 
+        
+        // 3. SHOW the download button
+        downloadBtn.style.display = "block"; 
+        downloadHeader.style.display = "block";
+        
+        resultBox.textContent = data.report.aiAnalysis;
         statusBox.textContent = "Audit Complete.";
-
       } else {
-        const data = await checkRes.json();
-        resultBox.textContent = JSON.stringify(data, null, 2);
-        statusBox.textContent = "Audit Complete.";
+        throw new Error(data.error || "Audit failed");
       }
 
     } catch (err) {
@@ -99,7 +96,67 @@
     }
   }
 
+  // 4. Move PDF logic out of runAudit
+  function generatePDF(report) {
+    if (!report) return;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // PDF Config
+    const margin = 20;
+    const pageHeight = doc.internal.pageSize.height;
+    let cursorY = 20; // Tracks vertical position
+
+    // 1. Header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.text("Smart Contract Security Audit", margin, cursorY);
+    cursorY += 15;
+
+    // 2. Metadata
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text(`File: ${report.contract}`, margin, cursorY);
+    cursorY += 8;
+    doc.text(`Security Score: ${report.securityScore}/100`, margin, cursorY);
+    cursorY += 8;
+    doc.text(`On-Chain TX: ${report.onChainTx || 'N/A'}`, margin, cursorY);
+    cursorY += 15;
+
+    // 3. AI Analysis Section
+    doc.setFont("helvetica", "bold");
+    doc.text("AI Analysis Report:", margin, cursorY);
+    cursorY += 10;
+
+    // 4. Smart Multi-page Text Handling
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    
+    // Split the AI analysis into lines that fit the page width
+    const splitText = doc.splitTextToSize(report.aiAnalysis, 170);
+    const lineHeight = 7;
+
+    splitText.forEach((line) => {
+        // Check if the current line will exceed the page height
+        if (cursorY + lineHeight > pageHeight - margin) {
+            doc.addPage(); // Add a new page
+            cursorY = 20;  // Reset cursor to top of new page
+        }
+        doc.text(line, margin, cursorY);
+        cursorY += lineHeight; // Move cursor down for the next line
+    });
+
+    // 5. Footer (Optional)
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, margin, pageHeight - 10);
+
+    doc.save(`${report.contract.replace('.sol', '')}_Audit_Report.pdf`);
+}
+
+  // Event Listeners
   document.getElementById("auditBtn").addEventListener("click", runAudit);
+  downloadBtn.addEventListener("click", () => generatePDF(lastReport));
 </script>
 </body>
 </html>

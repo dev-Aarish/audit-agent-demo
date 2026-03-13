@@ -1,137 +1,124 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>AI Smart Contract Auditor</title>
-  <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; line-height: 1.6; background: #f8fafc; color: #1e293b; }
-    .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-    h2 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
-    #result { background: #1e293b; color: #f8fafc; padding: 20px; border-radius: 8px; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 14px; margin-top: 20px; max-height: 500px; overflow-y: auto; }
-    .status { color: #2563eb; font-weight: bold; margin-top: 10px; }
-    
-    /* Buttons and Links */
-    button { background: #0052ff; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.2s; }
-    button:hover { background: #003db3; }
-    button:disabled { background: #94a3b8; cursor: not-allowed; }
-    
-    .links { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
-    .links a { padding: 10px 18px; background: #f1f5f9; color: #334155; border-radius: 6px; text-decoration: none; font-size: 14px; border: 1px solid #e2e8f0; transition: 0.2s; }
-    .links a:hover { background: #e2e8f0; }
-
-    #downloadSection { display: none; margin-top: 25px; padding: 20px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; text-align: center; }
-    #downloadSection h3 { color: #166534; margin-top: 0; }
-    #downloadBtn { background: #10b981; }
-    #downloadBtn:hover { background: #059669; }
-  </style>
+    <title>AI Smart Auditor</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 40px; background: #f8fafc; color: #1e293b; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+        .price-info { background: #dbeafe; color: #1e40af; padding: 8px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; margin-bottom: 20px; display: inline-block; }
+        #result { background: #1e293b; color: #f8fafc; padding: 20px; border-radius: 8px; font-size: 13px; margin-top: 20px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+        .status { color: #2563eb; font-weight: bold; margin-top: 10px; }
+        button { background: #0052ff; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .links { margin-top: 20px; display: flex; gap: 10px; }
+        .links a { padding: 10px 18px; background: #f1f5f9; color: #334155; border-radius: 6px; text-decoration: none; font-size: 14px; border: 1px solid #e2e8f0; font-weight: bold; }
+        #downloadSection { display: none; margin-top: 25px; padding: 20px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; text-align: center; }
+    </style>
 </head>
 <body>
 
 <div class="container">
-  <h2>AI Smart Contract Security Audit</h2>
-  <p>Cost: <strong>1 USDC</strong> (Gasless via Facinet)</p>
+    <h2>AI Smart Contract Security Auditor</h2>
+    <div class="price-info">Sponsored Mode: 0.50 USDC + 0.01/Line</div>
+    
+    <br>
+    <input type="file" id="contractFile" accept=".sol" />
+    <br><br>
+    <button id="auditBtn">Run AI Audit</button>
 
-  <input type="file" id="contractFile" accept=".sol" />
-  <br><br>
-  <button id="auditBtn">Pay & Run Audit</button>
+    <p id="status" class="status"></p>
 
-  <p id="status" class="status"></p>
+    <div id="downloadSection">
+        <h3>✅ Audit Ready</h3>
+        <button id="downloadBtn" style="background: #10b981;">Download PDF Report</button>
+    </div>
 
-  <div id="downloadSection">
-    <h3>✅ Your AI analysis is here!...</h3>
-    <button id="downloadBtn">Download PDF Report</button>
-  </div>
-
-  <div id="links" class="links"></div>
-  <pre id="result"></pre>
+    <div id="links" class="links"></div>
+    <pre id="result"></pre>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
-  const AUDIT_URL = "http://localhost:8000/audit";
-  const PAY_URL = "http://localhost:8000/pay";
+    const AUDIT_URL = "http://localhost:8000/audit";
+    const PAY_URL = "http://localhost:8000/pay";
+    let lastReportData = null;
 
-  // Global variable to store report for PDF generation
-  let lastReportData = null;
+    async function runAudit() {
+        const fileInput = document.getElementById("contractFile");
+        const statusBox = document.getElementById("status");
+        const linksBox = document.getElementById("links");
+        const btn = document.getElementById("auditBtn");
 
-  async function runAudit() {
-    const fileInput = document.getElementById("contractFile");
-    const statusBox = document.getElementById("status");
-    const resultBox = document.getElementById("result");
-    const linksBox = document.getElementById("links");
-    const downloadSection = document.getElementById("downloadSection");
-    const btn = document.getElementById("auditBtn");
+        if (!fileInput.files[0]) return alert("Select a file!");
 
-    if (!fileInput.files.length) return alert("Please select a .sol file");
+        linksBox.innerHTML = "";
+        document.getElementById("downloadSection").style.display = "none";
 
-    // Reset UI
-    linksBox.innerHTML = "";
-    resultBox.textContent = "";
-    downloadSection.style.display = "none";
+        try {
+            btn.disabled = true;
+            statusBox.textContent = "Calculating price...";
 
-    try {
-      btn.disabled = true;
-      statusBox.textContent = "Checking payment requirements...";
+            const form = new FormData();
+            form.append("contract", fileInput.files[0]);
 
-      const checkForm = new FormData();
-      checkForm.append("contract", fileInput.files[0]);
+            // 1. Handshake
+            let res = await fetch(AUDIT_URL, { method: "POST", body: form });
 
-      let res = await fetch(AUDIT_URL, { method: "POST", body: checkForm });
+            if (res.status === 402) {
+                const quote = await res.json();
+                statusBox.textContent = `Sponsoring ${quote.amount} USDC...`;
 
-      // Handle 402 Payment Required
-      if (res.status === 402) {
-        statusBox.textContent = "Processing gasless USDC payment...";
-        const payRes = await fetch(PAY_URL, { method: "POST" });
-        if (!payRes.ok) throw new Error("Payment failed.");
+                // 2. Request Server-Side Payment
+                const payRes = await fetch(PAY_URL, { 
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ amount: quote.amount }) 
+                });
 
-        const paymentResult = await payRes.json();
-        const paymentProof = btoa(JSON.stringify(paymentResult));
+                if (!payRes.ok) {
+                    const error = await payRes.json();
+                    throw new Error(error.error || "Payment failed");
+                }
 
-        statusBox.textContent = "Payment confirmed! Running AI audit...";
-        const auditForm = new FormData();
-        auditForm.append("contract", fileInput.files[0]);
+                const payResult = await payRes.json();
+                const proof = btoa(JSON.stringify(payResult));
 
-        res = await fetch(AUDIT_URL, {
-          method: "POST",
-          headers: { "x-payment": paymentProof },
-          body: auditForm
-        });
-      }
+                // 3. Resubmit Audit
+                statusBox.textContent = "Payment Verified! Running AI...";
+                res = await fetch(AUDIT_URL, {
+                    method: "POST",
+                    headers: { "x-payment": proof },
+                    body: form
+                });
+            }
 
-      if (!res.ok) throw new Error("Audit request failed.");
+            const data = await res.json();
+            lastReportData = data; 
 
-      const data = await res.json();
-      lastReportData = data; // Save for PDF
+            statusBox.textContent = "✅ Success!";
+            document.getElementById("downloadSection").style.display = "block";
 
-      statusBox.textContent = "✅ Audit Complete!";
-      downloadSection.style.display = "block"; // Show the "Your AI analysis is here!..." box
+            if (data.ipfs?.url) addLink(linksBox, data.ipfs.url, "View on IPFS");
+            if (data.blockchain?.explorerUrl) addLink(linksBox, data.blockchain.explorerUrl, "View on Basescan");
 
-      // Add Links
-      if (data.ipfs?.url) addLink(linksBox, data.ipfs.url, "View on IPFS");
-      if (data.blockchain?.explorerUrl) addLink(linksBox, data.blockchain.explorerUrl, "View on Basescan");
+            document.getElementById("result").textContent = data.report.aiAnalysis;
 
-      // Show raw JSON for developer view
-      resultBox.textContent = JSON.stringify(data, null, 2);
-
-    } catch (err) {
-      statusBox.textContent = "";
-      resultBox.textContent = "Error: " + err.message;
-    } finally {
-      btn.disabled = false;
+        } catch (err) {
+            statusBox.textContent = "Error: " + err.message;
+        } finally {
+            btn.disabled = false;
+        }
     }
-  }
 
-  function addLink(container, url, text) {
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.textContent = text;
-    container.appendChild(a);
-  }
+    function addLink(box, url, text) {
+        const a = document.createElement("a");
+        a.href = url; a.target = "_blank"; a.textContent = text;
+        box.appendChild(a);
+    }
 
-  // --- PDF GENERATION LOGIC ---
-  function generatePDF() {
-    if (!lastReportData) return;
+    function generatePDF() {
+    if (!lastReportData || !lastReportData.report) return alert("No report data found!");
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -139,86 +126,133 @@
     const margin = 20;
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    let y = 20;
+    let y = 0;
 
-    // --- FILENAME LOGIC ---
-    // Get the original name from the file input
-    const fileInput = document.getElementById("contractFile");
-    const originalFullFileName = fileInput.files[0] ? fileInput.files[0].name : "Contract.sol";
-    const cleanFileName = originalFullFileName.replace(".sol", "");
-
-    // 1. Header
+    // --- 1. PREMIUM BRANDED HEADER ---
+    doc.setFillColor(15, 23, 42); // Deep Navy
+    doc.rect(0, 0, pageWidth, 45, 'F');
+    
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.setTextColor(0, 82, 255); // Facinet Blue
-    doc.text("Smart Contract Security Audit", margin, y);
-    y += 12;
-
-    // 2. Metadata Section
+    doc.setFontSize(24);
+    doc.setTextColor(255, 255, 255);
+    doc.text("SECURITY AUDIT", margin, 25);
+    
     doc.setFontSize(10);
-    doc.setTextColor(100);
     doc.setFont("helvetica", "normal");
-    doc.text(`Target Contract: ${originalFullFileName}`, margin, y); // Display original name
-    y += 6;
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, margin, y);
+    doc.setTextColor(148, 163, 184); // Muted grey
+    doc.text("AI-POWERED SMART CONTRACT ANALYSIS", margin, 32);
+
+    // --- 2. METADATA SECTION ---
+    y = 55;
+    const fileName = document.getElementById("contractFile").files[0]?.name || "contract.sol";
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.setFont("helvetica", "bold");
+    doc.text("CONTRACT:", margin, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(fileName, margin + 25, y);
+    
+    doc.setFont("helvetica", "bold");
+    doc.text("DATE:", margin + 100, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(new Date().toLocaleDateString(), margin + 115, y);
+
+    // --- 3. DYNAMIC RISK SHIELD & SCORE ---
     y += 15;
+    const score = report.securityScore || 0;
+    let themeColor = [22, 163, 74]; // Green (Safe)
+    let riskLabel = "STABLE";
 
-    // 3. Security Score Highlight Box
-    doc.setDrawColor(200);
-    doc.setFillColor(245, 248, 255);
-    doc.rect(margin, y, pageWidth - (margin * 2), 20, 'F');
+    if (score < 80) { themeColor = [234, 179, 8]; riskLabel = "MEDIUM RISK"; }
+    if (score < 50) { themeColor = [220, 38, 38]; riskLabel = "CRITICAL RISK"; }
+
+    // Score Background Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, pageWidth - (margin * 2), 35, 3, 3, 'FD');
+
+    // Score Text
+    doc.setFontSize(12);
+    doc.setTextColor(100);
+    doc.text("SECURITY SCORE", margin + 10, y + 12);
     
+    doc.setFontSize(32);
+    doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.text(`${score}`, margin + 10, y + 25);
+    
+    doc.setFontSize(12);
+    doc.text("/ 100", margin + 32, y + 25);
+
+    // Risk Badge
+    doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.roundedRect(pageWidth - margin - 50, y + 10, 40, 15, 2, 2, 'F');
+    doc.setTextColor(255);
+    doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
+    doc.text(riskLabel, pageWidth - margin - 46, y + 20, { align: 'left' });
+
+    // --- 4. EXECUTIVE SUMMARY ---
+    y += 50;
     doc.setFontSize(14);
-    doc.setTextColor(30);
-    // Color code the score text (Green for high, Red for low)
-    const score = report.securityScore;
-    if (score >= 80) doc.setTextColor(22, 163, 74); // Green
-    else if (score >= 50) doc.setTextColor(234, 179, 8); // Yellow
-    else doc.setTextColor(220, 38, 38); // Red
+    doc.setTextColor(15, 23, 42);
+    doc.text("EXECUTIVE SUMMARY", margin, y);
     
-    doc.text(`Security Score: ${score}/100`, margin + 5, y + 13);
-    y += 30;
+    doc.setDrawColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.setLineWidth(1);
+    doc.line(margin, y + 2, margin + 20, y + 2); // Decorative underline
 
-    // 4. AI Analysis Section Header
-    doc.setFontSize(16);
-    doc.setTextColor(0, 82, 255);
+    y += 12;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(51, 65, 85);
+    
+    const summaryText = "This automated audit uses advanced AI patterns to detect vulnerabilities including Reentrancy, Integer Overflows, and Access Control flaws.";
+    const splitSummary = doc.splitTextToSize(summaryText, pageWidth - (margin * 2));
+    doc.text(splitSummary, margin, y);
+
+    // --- 5. DETAILED AI ANALYSIS (MULTI-PAGE) ---
+    y += 15;
+    doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
-    doc.text("AI Analysis Findings", margin, y);
+    doc.setTextColor(15, 23, 42);
+    doc.text("DETAILED ANALYSIS", margin, y);
     y += 10;
 
-    // 5. Body Text with Multi-page wrapping
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.setTextColor(40);
+    doc.setFontSize(10);
+    doc.setTextColor(30);
 
-    const splitAnalysis = doc.splitTextToSize(report.aiAnalysis, pageWidth - (margin * 2));
-    
+    const analysisText = report.aiAnalysis || "Full analysis report follows...";
+    const splitAnalysis = doc.splitTextToSize(analysisText, pageWidth - (margin * 2));
+
     splitAnalysis.forEach(line => {
-      if (y > pageHeight - 20) {
-        doc.addPage();
-        y = 20; // Reset Y for new page
-      }
-      doc.text(line, margin, y);
-      y += 7;
+        if (y > pageHeight - 25) {
+            addFooter(doc, pageWidth, pageHeight);
+            doc.addPage();
+            y = 25; // Reset for new page
+        }
+        doc.text(line, margin, y);
+        y += 6;
     });
 
-    // 6. Footer (Page Numbers)
-    const pageCount = doc.internal.getNumberOfPages();
-    for(let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text(`Page ${i} of ${pageCount}`, pageWidth - 30, pageHeight - 10);
-        doc.text(`Audit Report for ${originalFullFileName}`, margin, pageHeight - 10);
-    }
+    // Final Footer for the last page
+    addFooter(doc, pageWidth, pageHeight);
 
-    // 7. Save with the Original Filename
-    doc.save(`${cleanFileName}_Security_Audit.pdf`);
+    // --- 6. SAVE ---
+    doc.save(`${fileName.replace('.sol', '')}_Audit_Certificate.pdf`);
 }
-  document.getElementById("auditBtn").addEventListener("click", runAudit);
-  document.getElementById("downloadBtn").addEventListener("click", generatePDF);
-</script>
 
+// Helper for professional page numbers and footer
+function addFooter(doc, pageWidth, pageHeight) {
+    const pageCount = doc.internal.getNumberOfPages();
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`AI Auditor Registry ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()}`, 20, pageHeight - 10);
+    doc.text(`Page ${doc.internal.getCurrentPageInfo().pageNumber}`, pageWidth - 30, pageHeight - 10);
+}
+
+    document.getElementById("auditBtn").onclick = runAudit;
+    document.getElementById("downloadBtn").onclick = generatePDF;
+</script>
 </body>
 </html>
